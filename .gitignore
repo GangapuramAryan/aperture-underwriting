@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Datasets and model artifacts are never version-controlled
+data/
+artifacts/
+*.zip
+*.csv
+*.joblib
+*.pkl
+
+# Frontend
+node_modules/
+dist/
+.vite/
+
+.DS_Store
