@@ -31,7 +31,7 @@ prose, and never to choose them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -257,15 +257,22 @@ class ReasonCodeEngine:
         total = sum(contribution for _, contribution, _ in adverse)
         adverse.sort(key=lambda item: item[1], reverse=True)
 
+        # Several features can legitimately map to the same disclosure -- the
+        # three external scores all mean "bureau score is low". Listing that
+        # reason three times would consume the principal-reason slots without
+        # telling the applicant anything more, so each code is disclosed once
+        # and the freed slots go to the next distinct reason. Contribution
+        # shares are summed across the features backing a code, so the reported
+        # weight still reflects the full influence of that factor.
         reasons: list[AttributedReason] = []
-        for name, contribution, value in adverse[:MAX_PRINCIPAL_REASONS]:
-            share = contribution / total if total else 0.0
-            if share < MIN_CONTRIBUTION_SHARE:
+        seen: dict[str, int] = {}
+
+        for name, contribution, value in adverse:
+            if len(reasons) >= MAX_PRINCIPAL_REASONS and name not in seen:
                 break
 
-            # A feature with no mapped code must not silently vanish from a
-            # legally required disclosure. Surfacing it as UNMAPPED makes the
-            # gap visible in testing rather than in production.
+            share = contribution / total if total else 0.0
+
             code = REASON_CODES.get(name)
             if code is None:
                 code = ReasonCode(
@@ -274,6 +281,20 @@ class ReasonCodeEngine:
                     "Contact us for further detail on this factor.",
                 )
 
+            if code.code in seen:
+                index = seen[code.code]
+                existing = reasons[index]
+                reasons[index] = replace(
+                    existing,
+                    contribution=round(existing.contribution + contribution, 6),
+                    contribution_share=round(existing.contribution_share + share, 4),
+                )
+                continue
+
+            if share < MIN_CONTRIBUTION_SHARE:
+                break
+
+            seen[code.code] = len(reasons)
             reasons.append(
                 AttributedReason(
                     code=code.code,

@@ -119,3 +119,23 @@ def test_adverse_impact_ratio_flags_disparity():
     assert result.loc["B", "impact_ratio"] < 0.80
     assert result.loc["B", "flag"] == "REVIEW"
     assert result.loc["A", "flag"] == "ok"
+
+
+def test_reason_codes_are_not_duplicated():
+    """Several features map to one code; the disclosure must list it once."""
+    import joblib
+
+    from ml.reason_codes import ReasonCodeEngine
+
+    bundle = joblib.load("artifacts/model_enhanced.joblib")
+    engine = ReasonCodeEngine(bundle["model"], bundle["features"])
+
+    # The model may have been trained on Home Credit, whose external score
+    # columns the synthetic generator does not produce. Reindexing fills them
+    # with NaN, which is both what the estimator expects and an accurate
+    # depiction of an applicant with no external score on file.
+    df = generate_applicants(200, seed=11).reindex(columns=bundle["features"])
+
+    for reasons in engine.explain_batch(df.head(40)):
+        codes = [reason.code for reason in reasons]
+        assert len(codes) == len(set(codes)), f"duplicate reason codes: {codes}"
