@@ -1,0 +1,40 @@
+# Local infrastructure for Aperture.
+#
+# One service: PostgreSQL with the pgvector extension compiled in. The same
+# instance holds the relational tables and the applicant embeddings, which is
+# the point of choosing pgvector over a separate vector store -- a decision and
+# the vectors used to explain it stay in one transactional boundary, so an
+# audit record can never reference an embedding that was written to a different
+# system and lost.
+#
+#   docker compose up -d      start
+#   docker compose down       stop, keep data
+#   docker compose down -v    stop and erase the volume
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aperture-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aperture}
+      POSTGRES_USER: ${POSTGRES_USER:-aperture}
+      # Sourced from .env, which is git-ignored. The fallback exists so a fresh
+      # clone starts without configuration; it is a local development value and
+      # is never used anywhere a real credential would be.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aperture_local_dev}
+    ports:
+       - "5433:5432"
+    volumes:
+      - aperture_pgdata:/var/lib/postgresql/data
+      # Runs once on an empty volume: enables the extension before the
+      # application ever connects.
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aperture} -d ${POSTGRES_DB:-aperture}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aperture_pgdata:
