@@ -139,3 +139,55 @@ def test_reason_codes_are_not_duplicated():
     for reasons in engine.explain_batch(df.head(40)):
         codes = [reason.code for reason in reasons]
         assert len(codes) == len(set(codes)), f"duplicate reason codes: {codes}"
+
+
+# ---------------------------------------------------------------------------
+# Explanation layer
+# ---------------------------------------------------------------------------
+
+def _sample_decision():
+    return {
+        "outcome": "APPROVE",
+        "approved_line": 116700,
+        "reasons": [
+            {
+                "statement": "Your credit history is shorter than we typically require",
+                "improvement": "This improves on its own as your accounts age.",
+            }
+        ],
+    }
+
+
+def test_letter_validator_rejects_invented_figures():
+    """A notice must not assert a figure absent from the decision record."""
+    from backend.llm import build_facts, template_letter, validate_letter
+
+    decision = _sample_decision()
+    facts = build_facts(decision)
+    letter = template_letter(decision, facts)
+
+    assert validate_letter(letter, facts)[0]
+    assert not validate_letter(letter + " Your interest rate is 24.9%.", facts)[0]
+
+
+def test_letter_validator_rejects_internal_machinery():
+    """Notices must not describe the system that produced them."""
+    from backend.llm import build_facts, template_letter, validate_letter
+
+    decision = _sample_decision()
+    facts = build_facts(decision)
+    letter = template_letter(decision, facts)
+
+    assert not validate_letter(letter + " Our model scored this application.", facts)[0]
+
+
+def test_prompt_excludes_applicant_identity():
+    """No identifying detail may reach a third-party provider."""
+    from backend.llm import build_facts
+
+    decision = _sample_decision()
+    decision["applicant_name"] = "Priya Sharma"
+    facts = build_facts(decision)
+
+    assert "Priya" not in str(facts)
+    assert set(facts) <= {"outcome", "principal_reasons", "approved_credit_line_rupees"}

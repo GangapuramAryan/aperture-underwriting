@@ -15,6 +15,7 @@ import { useState } from "react";
 import { api, fmt } from "../api.js";
 import Attribution from "./Attribution.jsx";
 import EvidenceBar from "./EvidenceBar.jsx";
+import Letter from "./Letter.jsx";
 import Precedents from "./Precedents.jsx";
 
 const MIN_JUSTIFICATION = 15;
@@ -170,7 +171,7 @@ export default function DecisionDetail({ decision, onRefresh }) {
             </div>
           </div>
           <div className="stat">
-            <div className="stat-label">Bureau score</div>
+            <div className="stat-label">External score</div>
             <div className={`stat-value ${bureauScoreAbsent ? "absent" : ""}`}>
               {bureauScoreAbsent
                 ? "none on file"
@@ -259,6 +260,16 @@ export default function DecisionDetail({ decision, onRefresh }) {
               No behavioural fraud signals triggered.
             </p>
           )}
+        </div>
+
+        <div className="section">
+          <div className="section-head">
+            <h4>Applicant notice</h4>
+            <span className="section-note">
+              Phrases the reason codes above — it cannot change them
+            </span>
+          </div>
+          <Letter decisionId={decision.decision_id} />
         </div>
 
         <div className="section">

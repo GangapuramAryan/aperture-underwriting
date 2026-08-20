@@ -38,6 +38,7 @@ from backend.schemas import (
     QueueItem,
     ReasonOut,
 )
+from backend.llm import explain
 from backend.precedents import (
     ensure_schema,
     find_precedents,
@@ -343,6 +344,55 @@ def override_decision(
         "original_outcome": override.original_outcome,
         "new_outcome": override.new_outcome,
         "recorded": True,
+    }
+
+
+@app.post("/v1/decisions/{decision_id}/letter", tags=["decisioning"])
+def generate_letter(
+    decision_id: str, session: Session = Depends(get_session)
+) -> dict:
+    """Render the applicant-facing notice for a decision.
+
+    Reason codes were fixed at decision time. This endpoint only phrases them,
+    and the result is recorded in the ledger with the hash of the prompt used,
+    so any generated text can be traced to the exact input that produced it.
+    """
+    decision = session.get(Decision, decision_id)
+    if decision is None:
+        raise HTTPException(status_code=404, detail="decision not found")
+
+    result = explain(
+        {
+            "outcome": decision.outcome,
+            "approved_line": decision.approved_line,
+            "reasons": decision.reason_codes or [],
+        }
+    )
+
+    session.add(
+        DecisionLedger(
+            decision_id=decision_id,
+            application_id=decision.application_id,
+            outcome=f"NOTICE:{result.source.upper()}",
+            probability_of_default=decision.probability_of_default,
+            model_version=decision.model_version,
+            feature_set_hash="n/a",
+            input_hash=hashlib.sha256(result.letter.encode()).hexdigest(),
+            approve_threshold=settings.approve_threshold,
+            refer_threshold=settings.refer_threshold,
+            reason_codes=[],
+            llm_prompt_hash=result.prompt_hash,
+            llm_validated=result.validated,
+        )
+    )
+    session.commit()
+
+    return {
+        "letter": result.letter,
+        "source": result.source,
+        "validated": result.validated,
+        "rejection_reason": result.rejection_reason,
+        "provider": settings.llm_provider,
     }
 
 
