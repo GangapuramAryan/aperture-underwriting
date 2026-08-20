@@ -90,6 +90,16 @@ export const fmt = {
         })
       : "—",
 
+  // Home Credit anonymises the provenance of its external scores, so calling
+  // them "bureau score" would claim more than the data supports. Applicants
+  // with no bureau file can still carry one.
   featureName: (key) =>
+    ({
+      bureau_score: "External Score 2",
+      ext_source_1: "External Score 1",
+      ext_source_3: "External Score 3",
+      ecom_txn_count_90d: "Card Transactions (90d)",
+      telecom_recharge_cadence_days: "Payment Timing (days late)",
+    })[key] ||
     key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
 };

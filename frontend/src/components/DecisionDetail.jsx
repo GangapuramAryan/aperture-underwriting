@@ -15,6 +15,7 @@ import { useState } from "react";
 import { api, fmt } from "../api.js";
 import Attribution from "./Attribution.jsx";
 import EvidenceBar from "./EvidenceBar.jsx";
+import Precedents from "./Precedents.jsx";
 
 const MIN_JUSTIFICATION = 15;
 
@@ -222,6 +223,19 @@ export default function DecisionDetail({ decision, onRefresh }) {
             <span className="section-note">Per-applicant SHAP contribution</span>
           </div>
           <Attribution attribution={decision.shap_attribution} />
+        </div>
+
+        <div className="section">
+          <div className="section-head">
+            <h4>Comparable files</h4>
+            <span className="section-note">
+              Nearest applicants by vector similarity · pgvector
+            </span>
+          </div>
+          <Precedents
+            precedents={decision.precedents}
+            summary={decision.precedent_summary || {}}
+          />
         </div>
 
         <div className="section">

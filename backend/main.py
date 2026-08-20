@@ -29,6 +29,7 @@ from backend.database import (
     get_session,
     init_db,
 )
+from backend.database import SessionLocal
 from backend.schemas import (
     ApplicationRequest,
     DecisionResponse,
@@ -36,6 +37,12 @@ from backend.schemas import (
     OverrideRequest,
     QueueItem,
     ReasonOut,
+)
+from backend.precedents import (
+    ensure_schema,
+    find_precedents,
+    precedent_summary,
+    store_embedding,
 )
 from backend.scoring import DecisionService
 
@@ -45,6 +52,16 @@ settings = get_settings()
 async def lifespan(_: FastAPI):
     """Ensure the schema exists before the first request is served."""
     init_db()
+
+    # Precedent retrieval needs pgvector, which SQLite cannot provide. The
+    # console degrades to hiding the panel rather than failing, so local
+    # development without Docker stays possible.
+    if settings.database_url.startswith("postgresql"):
+        session = SessionLocal()
+        try:
+            ensure_schema(session)
+        finally:
+            session.close()
     yield
 
 
@@ -145,6 +162,19 @@ def create_decision(
             shap_attribution=result.shap_attribution,
         )
     )
+    if settings.database_url.startswith("postgresql"):
+        store_embedding(
+            session,
+            application_id=application.id,
+            decision_id=decision.id,
+            applicant_name=payload.applicant_name,
+            outcome=result.outcome,
+            probability=result.probability_of_default,
+            is_thin_file=result.is_thin_file,
+            requested_amount=payload.requested_amount,
+            features=features,
+        )
+
     session.commit()
 
     return DecisionResponse(
@@ -224,7 +254,18 @@ def read_decision(decision_id: str, session: Session = Depends(get_session)) -> 
         select(Override).where(Override.decision_id == decision_id)
     ).all()
 
+    precedents: list = []
+    if settings.database_url.startswith("postgresql"):
+        try:
+            precedents = find_precedents(session, decision.application_id)
+        except Exception:
+            # A retrieval failure must never take down the decision view: the
+            # precedent panel is advisory, the decision record is not.
+            precedents = []
+
     return {
+        "precedents": precedents,
+        "precedent_summary": precedent_summary(precedents),
         "decision_id": decision.id,
         "application_id": decision.application_id,
         "applicant_name": application.applicant_name if application else None,
